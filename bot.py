@@ -1,26 +1,29 @@
+import asyncio
 import logging
-import logging.config
-import warnings
-from pyrogram import Client, idle
+from datetime import datetime
+
+from aiohttp import web
 from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
-from config import Config
-from aiohttp import web
 from pytz import timezone
-from datetime import datetime
-import asyncio
-from plugins.web_support import web_server
-import pyromod
 
-logging.config.fileConfig("logging.conf")
-logging.getLogger().setLevel(logging.INFO)
+from config import Config
+from route import web_server
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 
 class Bot(Client):
+
     def __init__(self):
         super().__init__(
-            name="AshutoshGoswami24",
+            name="ANIFLIX_RENAME_BOT",
             api_id=Config.API_ID,
             api_hash=Config.API_HASH,
             bot_token=Config.BOT_TOKEN,
@@ -30,59 +33,96 @@ class Bot(Client):
         )
 
     async def start(self):
+
         await super().start()
+
         me = await self.get_me()
+
         self.mention = me.mention
         self.username = me.username
+
+        # Start Railway web server
         app = web.AppRunner(await web_server())
         await app.setup()
-        bind_address = "0.0.0.0"
-        await web.TCPSite(app, bind_address, Config.PORT).start()
-        logging.info(f"{me.first_name} ✅✅ BOT started successfully ✅✅")
 
-        for id in Config.ADMIN:
+        await web.TCPSite(
+            app,
+            "0.0.0.0",
+            Config.PORT
+        ).start()
+
+        logging.info(
+            "%s started successfully | Pyrogram %s | Layer %s",
+            me.first_name,
+            __version__,
+            layer
+        )
+
+        # Notify admins
+        for admin in Config.ADMIN:
+
             try:
+
                 await self.send_message(
-                    id, f"**__{me.first_name}  Iꜱ Sᴛᴀʀᴛᴇᴅ.....✨️__**"
+                    admin,
+                    f"**{me.first_name} started successfully.**"
                 )
-            except:
-                pass
 
+            except Exception:
+
+                logging.exception(
+                    "Could not notify admin %s",
+                    admin
+                )
+
+        # Log channel
         if Config.LOG_CHANNEL:
+
             try:
-                curr = datetime.now(timezone("Asia/Kolkata"))
-                date = curr.strftime("%d %B, %Y")
-                time = curr.strftime("%I:%M:%S %p")
+
+                now = datetime.now(
+                    timezone("Asia/Kolkata")
+                )
+
                 await self.send_message(
                     Config.LOG_CHANNEL,
-                    f"**__{me.mention} Iꜱ Rᴇsᴛᴀʀᴛᴇᴅ !!**\n\n📅 Dᴀᴛᴇ : `{date}`\n⏰ Tɪᴍᴇ : `{time}`\n🌐 Tɪᴍᴇᴢᴏɴᴇ : `Asia/Kolkata`\n\🤖 Vᴇʀsɪᴏɴ : `v{__version__} (Layer {layer})`</b>",
+
+                    f"**{me.mention} restarted successfully!**\n\n"
+                    f"📅 Date: `{now.strftime('%d %B, %Y')}`\n"
+                    f"⏰ Time: `{now.strftime('%I:%M:%S %p')}`\n"
+                    f"🌐 Timezone: `Asia/Kolkata`\n"
+                    f"🤖 Version: `v{__version__} (Layer {layer})`"
                 )
-            except:
-                print("Pʟᴇᴀꜱᴇ Mᴀᴋᴇ Tʜɪꜱ Iꜱ Aᴅᴍɪɴ Iɴ Yᴏᴜʀ Lᴏɢ Cʜᴀɴɴᴇʟ")
+
+            except Exception:
+
+                logging.exception(
+                    "Could not send startup log"
+                )
 
     async def stop(self, *args):
+
         await super().stop()
-        logging.info("Bot Stopped 🙄")
+
+        logging.info("Bot stopped.")
 
 
-bot_instance = Bot()
+async def main():
 
+    bot = Bot()
 
-def main():
-    async def start_services():
-        if Config.STRING_SESSION:
-            await asyncio.gather(
-                app.start(),  # Start the Pyrogram Client
-                bot_instance.start(),  # Start the bot instance
-            )
-        else:
-            await asyncio.gather(bot_instance.start())
+    await bot.start()
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_services())
-    loop.run_forever()
+    try:
+
+        # Keep bot alive on Railway
+        await asyncio.Event().wait()
+
+    finally:
+
+        await bot.stop()
 
 
 if __name__ == "__main__":
-    warnings.filterwarnings("ignore", message="There is no current event loop")
-    main()
+
+    asyncio.run(main())
